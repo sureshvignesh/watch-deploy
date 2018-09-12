@@ -1,0 +1,91 @@
+#!/usr/bin/env ruby
+
+$LOAD_PATH.unshift(File.join(File.dirname(__FILE__), *%w(.. lib)))
+
+require "optparse"
+require "caravan"
+
+options = {}
+# rubocop:disable Metrics/BlockLength
+option_parser = OptionParser.new do |opts|
+  opts.banner = "Caravan #{Caravan::VERSION}\nCopyright (c) David Zhang 2018\n"
+  opts.separator ""
+
+  opts.on("-l YAML_NAME", "--load YAML_NAME", "YAML path") do |value|
+    options[:yaml] = value
+  end
+
+  opts.on("-c SPEC_NAME", "--spec SPEC_NAME", "Spec name") do |value|
+    options[:spec] = value
+  end
+
+  opts.on("-s SOURCE_PATH", "--source SOURCE_PATH", "Source path") do |value|
+    options[:src] = value
+  end
+
+  opts.on("-d DEST_PATH", "--dest DEST_PATH", "Destination path") do |value|
+    options[:dst] = value
+  end
+
+  opts.on("-m DEPLOY_MODE", "--mode DEPLOY_MODE", "Deploy mode") do |value|
+    options[:mode] = value || "shell"
+  end
+
+  opts.on("-i IGNORE_FILES", "--ignore IGNORE_FILES", "Ignore files") do |value|
+    if options.key?(:ignore)
+      options[:ignore] << value
+    else
+      options[:ignore] = [value]
+    end
+  end
+
+  opts.on("-o", "--once", "Deploy for once") do
+    options[:once] = true
+  end
+
+  opts.on("-b", "--debug", "Debug mode") do
+    options[:debug] = true
+  end
+
+  opts.on_head("--init", "Init caravan.yml") do
+    Caravan.dump_default_conf
+    Caravan::Message.success("Generated #{Caravan::Config.default_conf_name}")
+    exit
+  end
+
+  opts.on_tail("--version", "Show version") do
+    puts Caravan::VERSION
+    exit
+  end
+end
+# rubocop:enable Metrics/BlockLength
+
+default_spec_name = Caravan::Config.default_spec_name
+
+if ARGV.length.zero?
+  merged_conf = Caravan::Config.merge({}, Caravan.process_conf("."), default_spec_name)
+else
+  option_parser.parse!(ARGV)
+  spec_name = options[:spec] || default_spec_name
+  merged_conf = if options.key?(:yaml)
+                  Caravan::Config.merge(
+                    options,
+                    Caravan.process_conf(options[:src], options[:yaml]),
+                    spec_name
+                  )
+                else
+                  Caravan::Config.merge(
+                    options,
+                    Caravan.process_conf(options[:src]),
+                    spec_name
+                  )
+                end
+end
+
+if merged_conf.key?("src") &&
+   merged_conf.key?("dst") &&
+   merged_conf.key?("deploy_mode")
+  Caravan.start(merged_conf)
+else
+  Caravan::Message.error("No src, dst, deploy_mode specified. Cannot deploy.")
+end
